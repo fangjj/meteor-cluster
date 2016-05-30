@@ -1,0 +1,69 @@
+version: '2'
+services:
+  clustertest-processor:
+    build:
+      context: ./processor
+      dockerfile: Dockerfile
+    image: clustertest/processor
+    volumes:
+      - /clustertest/data/processor:/opt/clustertest
+    expose:
+      - "80"
+    networks:
+      - default
+    links:
+      - clustertest-db:db
+      - clustertest-db:discovery
+    environment:
+      - CLUSTER_DISCOVERY_URL=mongodb://discovery/clustertest-cluster
+      - CLUSTER_ENDPOINT_URL=http://clustertest-processor
+      - CLUSTER_SERVICE=processor
+      - MONGO_URL=mongodb://db/clustertest
+      - MONGO_OPLOG_URL=mongodb://db/local
+      - ROOT_URL=http://clustertest-processor
+    restart: always
+
+  clustertest-web:
+    build:
+      context: ./webapp
+      dockerfile: Dockerfile
+    image: clustertest/web
+    expose:
+      - "80"
+    networks:
+      - default
+      - vhost_net
+    links:
+      - clustertest-db:db
+      - clustertest-db:discovery
+      - clustertest-processor:processor
+    environment:
+      - VIRTUAL_HOST=beta.yourdomain.com
+      - LETSENCRYPT_HOST=beta.yourdomain.com
+      - LETSENCRYPT_EMAIL=postmaster@yourdomain.com
+      - CLUSTER_DISCOVERY_URL=mongodb://discovery/clustertest-cluster
+      - CLUSTER_ENDPOINT_URL=http://clustertest-web
+      - CLUSTER_SERVICE=web
+      - MONGO_URL=mongodb://db/clustertest
+      - MONGO_OPLOG_URL=mongodb://db/local
+      - ROOT_URL=https://beta.yourdomain.com
+    restart: always
+
+  clustertest-db:
+    image: ekesken/mongo:2.6 # ReplSet Enabled
+    volumes:
+      - /clustertest/data/mongo:/data/db
+    ports:
+      - "27017:27017"
+    environment: # OPLOG!
+      - REPLICATION_SET_NAME=rs0
+    restart: always
+    # $ mongo localhost/admin
+    # cluster:PRIMARY> rs.initiate()
+    # cluster:PRIMARY> db.createUser({user: "oplogger", pwd: "oplogger", roles: [{role: "read", db: "local"}]})
+
+
+networks:
+  vhost_net:
+    external:
+      name: nginx_vhost_net

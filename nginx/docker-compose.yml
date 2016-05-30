@@ -1,0 +1,66 @@
+version: '2'
+services:
+  nginx:
+    image: nginx
+    container_name: nginx
+    networks:
+      - default
+      - vhost_net
+    volumes:
+      - /etc/nginx/conf.d
+      - /etc/nginx/vhost.d
+      - /usr/share/nginx/html
+      - /srv/nginx/certs:/etc/nginx/certs:ro
+    ports:
+      - "80:80"
+      - "443:443"
+    restart: always
+
+  nginx-gen:
+    build:
+      context: .
+      dockerfile: Dockerfile-nginx-gen
+    container_name: nginx-gen
+    volumes_from:
+      - nginx
+    volumes:
+      - /var/run/docker.sock:/tmp/docker.sock:ro
+    restart: always
+
+  nginx-letsencrypt:
+    image: jrcs/letsencrypt-nginx-proxy-companion
+    container_name: nginx-letsencrypt
+    depends_on:
+      - nginx-gen
+    volumes_from:
+      - nginx
+    volumes:
+      - /srv/nginx/certs:/etc/nginx/certs:rw
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    environment:
+      - NGINX_DOCKER_GEN_CONTAINER=nginx-gen
+    restart: always
+
+  logspout:
+    image: gliderlabs/logspout
+    container_name: logspout
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    restart: always
+    command: "syslog://XXXX.papertrailapp.com:XXXX"
+
+  logrotate:
+    image: michaloo/logrotate
+    container_name: logrotate
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /var/lib/docker:/var/lib/docker
+    environment:
+      - LOGROTATE_MODE=daily
+      - LOGROTATE_ROTATE=7
+      - GOCRON_SCHEDULER=0 0 * * * *
+    restart: always
+
+networks:
+  vhost_net:
+    driver: bridge
